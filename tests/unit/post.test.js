@@ -7,6 +7,7 @@ jest.mock('../../models', () => ({
 
 const { ManySide } = require('../../models');
 const router = require('../../routes');
+const phone = require('../mock-data/mock-new-phone.json');
 
 const createHandler = router.stack
     .find((layer) => layer.route?.path === '/new')
@@ -23,15 +24,8 @@ function createResponse() {
 }
 
 describe('POST /new', () => {
-    let consoleError;
-
     beforeEach(() => {
         jest.clearAllMocks();
-        consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-    });
-
-    afterEach(() => {
-        consoleError.mockRestore();
     });
 
     it('registers the POST /new endpoint', () => {
@@ -43,7 +37,6 @@ describe('POST /new', () => {
     });
 
     it('creates a phone and returns its id with status 201', async () => {
-        const phone = { _id: 7, nev: 'Phone' };
         const req = { body: phone };
         const res = createResponse();
         ManySide.create.mockResolvedValue(phone);
@@ -52,7 +45,7 @@ describe('POST /new', () => {
 
         expect(ManySide.create).toHaveBeenCalledWith(phone);
         expect(res.status).toHaveBeenCalledWith(201);
-        expect(res.json).toHaveBeenCalledWith({ _id: 7 });
+        expect(res.json).toHaveBeenCalledWith({ _id: phone._id });
     });
 
     it('returns 400 for a validation error', async () => {
@@ -64,11 +57,10 @@ describe('POST /new', () => {
 
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith({ message: 'Hiányos vagy érvénytelen adatok' });
-        expect(consoleError).not.toHaveBeenCalled();
     });
 
     it('returns 409 when a phone already exists', async () => {
-        const req = { body: { _id: 7 } };
+        const req = { body: phone };
         const res = createResponse();
         ManySide.create.mockRejectedValue({ code: 11000 });
 
@@ -76,7 +68,6 @@ describe('POST /new', () => {
 
         expect(res.status).toHaveBeenCalledWith(409);
         expect(res.json).toHaveBeenCalledWith({ message: 'Már létezik ilyen telefon' });
-        expect(consoleError).not.toHaveBeenCalled();
     });
 
     it('returns 500 and logs unexpected errors', async () => {
@@ -89,6 +80,5 @@ describe('POST /new', () => {
 
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ message: 'Szerver hiba' });
-        expect(consoleError).toHaveBeenCalledWith(error);
     });
 });

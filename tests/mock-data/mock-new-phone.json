@@ -2,6 +2,5 @@
     "_id": 7,
     "nev": "teszt-telefon",
     "ar": 200000,
-    "szin": "zold",
-    "foreignId": 2
+    "szin": "zold"
 }
