@@ -18,5 +18,9 @@
   "license": "ISC",
   "dependencies": {
     "sg-backend-starter": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.5.2"
   }
 }
