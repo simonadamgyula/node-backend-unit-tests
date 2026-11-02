@@ -1,8 +1,9 @@
-const express = require('express');
-const request = require('supertest');
+const httpMocks = require('node-mocks-http');
+const { EventEmitter } = require('events');
 const routes = require('./routes');
 const { ManySide } = require('./models');
 
+// A models modul mockolása, hogy a unit teszt külső függőségtől (MongoDB) teljesen mentes legyen
 jest.mock('./models', () => ({
     OneSide: {},
     ManySide: {
@@ -10,15 +11,31 @@ jest.mock('./models', () => ({
     }
 }));
 
-const app = express();
-app.use(express.json());
-app.use('/api', routes);
+// Segédfüggvény, amely közvetlenül meghívja az Express routert, és megvárja a válasz (res.send / res.json) végét
+const runRoute = (req, res) => new Promise((resolve, reject) => {
+    res.on('end', resolve);
+    routes(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+    });
+});
 
-describe('DELETE /api/manyside/:id végpont unit tesztjei', () => {
+describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + EventEmitter)', () => {
+    let req;
+    let res;
+
     beforeEach(() => {
         jest.clearAllMocks();
+        req = httpMocks.createRequest({
+            method: 'DELETE',
+            url: '/manyside/21'
+        });
+        res = httpMocks.createResponse({
+            eventEmitter: EventEmitter
+        });
     });
 
+    // 1. teszt: Sikeres törlés ellenőrzése
     test('1. Létező elem sikeres törlése esetén 200-as státuszkódot és visszaigazoló szöveget ad vissza', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue({
             _id: 21,
@@ -27,65 +44,78 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei', () => {
             foreignId: 1
         });
 
-        const response = await request(app).delete('/api/manyside/21');
+        await runRoute(req, res);
 
-        expect(response.status).toBe(200);
-        expect(response.text).toBe('A Samsung S25 nevű elem törölve lett.');
+        expect(res.statusCode).toBe(200);
+        expect(res._getData()).toBe('A Samsung S25 nevű elem törölve lett.');
     });
 
-    test('2. A ManySide.findByIdAndDelete pontosan az URL-ben kapott ID-val hívódik meg', async () => {
+    // 2. teszt: Az Express router automatikusan kinyeri az URL-ből az ID-t, és átadja a findByIdAndDelete-nek
+    test('2. A ManySide.findByIdAndDelete pontosan az URL-ből kinyert ID-val hívódik meg', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue({
             _id: 42,
             nev: 'iPhone 16'
         });
 
-        await request(app).delete('/api/manyside/42');
+        req.url = '/manyside/42';
+
+        await runRoute(req, res);
 
         expect(ManySide.findByIdAndDelete).toHaveBeenCalledTimes(1);
         expect(ManySide.findByIdAndDelete).toHaveBeenCalledWith('42');
     });
 
+    // 3. teszt: Nem létező elem törlése (findByIdAndDelete null-t ad vissza, így a data.nev TypeError-t dob, ami a catch ágba fut)
     test('3. Nem létező ID törlésekor (null eredmény) 500-as státuszkódot és hibaüzenetet ad vissza', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue(null);
 
-        const response = await request(app).delete('/api/manyside/999');
+        req.url = '/manyside/999';
 
-        expect(response.status).toBe(500);
-        expect(response.body).toHaveProperty('message');
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toHaveProperty('message');
     });
 
+    // 4. teszt: Adatbázis hiba (rejected promise) kezelése
     test('4. Adatbázis hiba esetén 500-as státuszkódot és a hibaüzenetet adja vissza JSON formátumban', async () => {
         ManySide.findByIdAndDelete.mockRejectedValue(new Error('Adatbázis hiba történt a törlés során'));
 
-        const response = await request(app).delete('/api/manyside/21');
+        await runRoute(req, res);
 
-        expect(response.status).toBe(500);
-        expect(response.body).toEqual({
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({
             message: 'Adatbázis hiba történt a törlés során'
         });
     });
 
+    // 5. teszt: Érvénytelen ID formátum (CastError) kezelése
     test('5. Érvénytelen ID formátum (CastError) esetén 500-as státuszkódot és a hiba okát adja vissza', async () => {
         const castError = new Error('Cast to Number failed for value "invalid-id" at path "_id"');
         castError.name = 'CastError';
         ManySide.findByIdAndDelete.mockRejectedValue(castError);
 
-        const response = await request(app).delete('/api/manyside/invalid-id');
+        req.url = '/manyside/invalid-id';
 
-        expect(response.status).toBe(500);
-        expect(response.body.message).toContain('Cast to Number failed');
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData().message).toContain('Cast to Number failed');
     });
 
-    test('6. Sikeres törlés esetén a válasz Content-Type fejléce text/html (res.send szöveges válasz miatt)', async () => {
+    // 6. teszt: Válasz lezárásának (_isEndCalled) és tartalmának ellenőrzése sikeres törlésnél
+    test('6. Sikeres törlés esetén megfelelően lezárja a HTTP választ (_isEndCalled: true)', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue({
             _id: 10,
             nev: 'Xiaomi 15'
         });
 
-        const response = await request(app).delete('/api/manyside/10');
+        req.url = '/manyside/10';
 
-        expect(response.status).toBe(200);
-        expect(response.headers['content-type']).toMatch(/text\/html/);
-        expect(response.text).toContain('Xiaomi 15');
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(200);
+        expect(res._isEndCalled()).toBe(true);
+        expect(res._getData()).toContain('Xiaomi 15');
     });
 });
