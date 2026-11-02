@@ -1,8 +1,9 @@
-const express = require('express');
-const request = require('supertest');
+const httpMocks = require('node-mocks-http');
+const { EventEmitter } = require('events');
 const routes = require('./routes');
 const { ManySide } = require('./models');
 
+// A models modul mockolása, hogy a unit teszt külső függőségtől (MongoDB) teljesen mentes legyen
 jest.mock('./models', () => ({
     OneSide: {},
     ManySide: {
@@ -10,15 +11,31 @@ jest.mock('./models', () => ({
     }
 }));
 
-const app = express();
-app.use(express.json());
-app.use('/api', routes);
+// Segédfüggvény, amely közvetlenül meghívja az Express routert, és megvárja a válasz (res.send / res.json) végét
+const runRoute = (req, res) => new Promise((resolve, reject) => {
+    res.on('end', resolve);
+    routes(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+    });
+});
 
-describe('PATCH /api/manyside/:id végpont unit tesztjei', () => {
+describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + EventEmitter)', () => {
+    let req;
+    let res;
+
     beforeEach(() => {
         jest.clearAllMocks();
+        req = httpMocks.createRequest({
+            method: 'PATCH',
+            url: '/manyside/1'
+        });
+        res = httpMocks.createResponse({
+            eventEmitter: EventEmitter
+        });
     });
 
+    // 1. teszt: Sikeres részleges frissítés (pl. név módosítása)
     test('1. Sikeres frissítés esetén 200-as státuszkódot és a módosított objektumot adja vissza', async () => {
         const mockUpdatedItem = {
             _id: 1,
@@ -29,15 +46,16 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei', () => {
         };
         ManySide.findByIdAndUpdate.mockResolvedValue(mockUpdatedItem);
 
-        const response = await request(app)
-            .patch('/api/manyside/1')
-            .send({ nev: 'updated' });
+        req.body = { nev: 'updated' };
 
-        expect(response.status).toBe(200);
-        expect(response.body).toEqual(mockUpdatedItem);
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(200);
+        expect(res._getData()).toEqual(mockUpdatedItem);
     });
 
-    test('2. A ManySide.findByIdAndUpdate pontosan a kapott ID-val, body-val és opciókkal hívódik meg', async () => {
+    // 2. teszt: Az Express router automatikusan kinyeri az URL-ből az ID-t, és átadja a findByIdAndUpdate-nek
+    test('2. A ManySide.findByIdAndUpdate pontosan az URL-ből kinyert ID-val, body-val és opciókkal hívódik meg', async () => {
         const updatePayload = { ar: 299000, szin: 'fehér' };
         ManySide.findByIdAndUpdate.mockResolvedValue({
             _id: 5,
@@ -45,9 +63,10 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei', () => {
             ...updatePayload
         });
 
-        await request(app)
-            .patch('/api/manyside/5')
-            .send(updatePayload);
+        req.url = '/manyside/5';
+        req.body = updatePayload;
+
+        await runRoute(req, res);
 
         expect(ManySide.findByIdAndUpdate).toHaveBeenCalledTimes(1);
         expect(ManySide.findByIdAndUpdate).toHaveBeenCalledWith(
@@ -57,57 +76,64 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei', () => {
         );
     });
 
+    // 3. teszt: Nem létező azonosító (null visszatérési érték az adatbázisból)
     test('3. Nem létező ID esetén 404-es státuszkódot és megfelelő hibaüzenetet ad vissza', async () => {
         ManySide.findByIdAndUpdate.mockResolvedValue(null);
 
-        const response = await request(app)
-            .patch('/api/manyside/999')
-            .send({ nev: 'NemLetezo' });
+        req.url = '/manyside/999';
+        req.body = { nev: 'NemLetezo' };
 
-        expect(response.status).toBe(404);
-        expect(response.body).toEqual({
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(404);
+        expect(res._getJSONData()).toEqual({
             message: '999 azonosítóval nem létezik elem!'
         });
     });
 
+    // 4. teszt: Adatbázis vagy kapcsolat hiba kezelése (500 Internal Server Error)
     test('4. Adatbázis hiba esetén 500-as státuszkódot és a hiba szövegét adja vissza', async () => {
         ManySide.findByIdAndUpdate.mockRejectedValue(new Error('Adatbázis kapcsolat megszakadt'));
 
-        const response = await request(app)
-            .patch('/api/manyside/1')
-            .send({ nev: 'Teszt' });
+        req.body = { nev: 'Teszt' };
 
-        expect(response.status).toBe(500);
-        expect(response.body).toEqual({
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({
             message: 'Adatbázis kapcsolat megszakadt'
         });
     });
 
+    // 5. teszt: Validációs hiba kezelése (pl. runValidators: true miatt túl hosszú név)
     test('5. Mongoose validációs hiba esetén 500-as státuszkódot és a validációs hibaüzenetet adja vissza', async () => {
         const validationError = new Error('A név nem lehet hosszabb 50 karakternél!');
         validationError.name = 'ValidationError';
         ManySide.findByIdAndUpdate.mockRejectedValue(validationError);
 
-        const response = await request(app)
-            .patch('/api/manyside/1')
-            .send({ nev: 'A'.repeat(55) });
+        req.body = { nev: 'A'.repeat(55) };
 
-        expect(response.status).toBe(500);
-        expect(response.body).toEqual({
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({
             message: 'A név nem lehet hosszabb 50 karakternél!'
         });
     });
 
-    test('6. Érvénytelen formátumú ID (CastError) esetén 500-as státuszkódot és hibaüzenetet ad vissza', async () => {
+    // 6. teszt: Érvénytelen ID típus (CastError) kezelése és a válasz lezárásának ellenőrzése
+    test('6. Érvénytelen formátumú ID (CastError) esetén 500-as státuszkódot ad és lezárja a választ', async () => {
         const castError = new Error('Cast to Number failed for value "abc" (type string) at path "_id"');
         castError.name = 'CastError';
         ManySide.findByIdAndUpdate.mockRejectedValue(castError);
 
-        const response = await request(app)
-            .patch('/api/manyside/abc')
-            .send({ ar: 150000 });
+        req.url = '/manyside/abc';
+        req.body = { ar: 150000 };
 
-        expect(response.status).toBe(500);
-        expect(response.body.message).toContain('Cast to Number failed');
+        await runRoute(req, res);
+
+        expect(res.statusCode).toBe(500);
+        expect(res._isEndCalled()).toBe(true);
+        expect(res._getJSONData().message).toContain('Cast to Number failed');
     });
 });
