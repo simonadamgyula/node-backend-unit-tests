@@ -1,17 +1,15 @@
 const httpMocks = require('node-mocks-http');
 const { EventEmitter } = require('events');
-const routes = require('./routes');
-const { ManySide } = require('./models');
+const routes = require('../../routes');
+const { ManySide } = require('../../models');
 
-// A models modul mockolása, hogy a unit teszt külső függőségtől (MongoDB) teljesen mentes legyen
-jest.mock('./models', () => ({
+jest.mock('../../models', () => ({
     OneSide: {},
     ManySide: {
         findByIdAndUpdate: jest.fn()
     }
 }));
 
-// Segédfüggvény, amely közvetlenül meghívja az Express routert, és megvárja a válasz (res.send / res.json) végét
 const runRoute = (req, res) => new Promise((resolve, reject) => {
     res.on('end', resolve);
     routes(req, res, (err) => {
@@ -35,7 +33,6 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + Even
         });
     });
 
-    // 1. teszt: Sikeres részleges frissítés (pl. név módosítása)
     test('1. Sikeres frissítés esetén 200-as státuszkódot és a módosított objektumot adja vissza', async () => {
         const mockUpdatedItem = {
             _id: 1,
@@ -54,7 +51,6 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + Even
         expect(res._getData()).toEqual(mockUpdatedItem);
     });
 
-    // 2. teszt: Az Express router automatikusan kinyeri az URL-ből az ID-t, és átadja a findByIdAndUpdate-nek
     test('2. A ManySide.findByIdAndUpdate pontosan az URL-ből kinyert ID-val, body-val és opciókkal hívódik meg', async () => {
         const updatePayload = { ar: 299000, szin: 'fehér' };
         ManySide.findByIdAndUpdate.mockResolvedValue({
@@ -76,7 +72,6 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + Even
         );
     });
 
-    // 3. teszt: Nem létező azonosító (null visszatérési érték az adatbázisból)
     test('3. Nem létező ID esetén 404-es státuszkódot és megfelelő hibaüzenetet ad vissza', async () => {
         ManySide.findByIdAndUpdate.mockResolvedValue(null);
 
@@ -91,7 +86,6 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + Even
         });
     });
 
-    // 4. teszt: Adatbázis vagy kapcsolat hiba kezelése (500 Internal Server Error)
     test('4. Adatbázis hiba esetén 500-as státuszkódot és a hiba szövegét adja vissza', async () => {
         ManySide.findByIdAndUpdate.mockRejectedValue(new Error('Adatbázis kapcsolat megszakadt'));
 
@@ -105,7 +99,6 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + Even
         });
     });
 
-    // 5. teszt: Validációs hiba kezelése (pl. runValidators: true miatt túl hosszú név)
     test('5. Mongoose validációs hiba esetén 500-as státuszkódot és a validációs hibaüzenetet adja vissza', async () => {
         const validationError = new Error('A név nem lehet hosszabb 50 karakternél!');
         validationError.name = 'ValidationError';
@@ -121,7 +114,6 @@ describe('PATCH /api/manyside/:id végpont unit tesztjei (node-mocks-http + Even
         });
     });
 
-    // 6. teszt: Érvénytelen ID típus (CastError) kezelése és a válasz lezárásának ellenőrzése
     test('6. Érvénytelen formátumú ID (CastError) esetén 500-as státuszkódot ad és lezárja a választ', async () => {
         const castError = new Error('Cast to Number failed for value "abc" (type string) at path "_id"');
         castError.name = 'CastError';
