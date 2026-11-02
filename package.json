@@ -20,6 +20,8 @@
     "sg-backend-starter": "^1.0.3"
   },
   "devDependencies": {
-    "jest": "^30.5.2"
+    "@types/jest": "^30.0.0",
+    "jest": "^30.5.2",
+    "node-mocks-http": "^1.18.1"
   }
 }
