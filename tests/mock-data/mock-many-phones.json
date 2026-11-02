@@ -1,0 +1,22 @@
+[
+    {
+        "_id": 7,
+        "nev": "teszt-telefon",
+        "ar": 200000,
+        "szin": "zold",
+        "foreignId": {
+            "_id": 1,
+            "nev": "teszt-gyarto"
+        }
+    },
+    {
+        "_id": 8,
+        "nev": "masik-telefon",
+        "ar": 150000,
+        "szin": "fekete",
+        "foreignId": {
+            "_id": 2,
+            "nev": "masik-gyarto"
+        }
+    }
+]
