@@ -18,7 +18,7 @@ const runRoute = (req, res) => new Promise((resolve, reject) => {
     });
 });
 
-describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + EventEmitter)', () => {
+describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventEmitter)', () => {
     let req;
     let res;
 
@@ -33,7 +33,7 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + Eve
         });
     });
 
-    test('1. Létező elem sikeres törlése esetén 200-as státuszkódot és visszaigazoló szöveget ad vissza', async () => {
+    test('Returns 200 status code and confirmation text upon successful deletion of an existing item', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue({
             _id: 21,
             nev: 'Samsung S25',
@@ -47,7 +47,7 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + Eve
         expect(res._getData()).toBe('A Samsung S25 nevű elem törölve lett.');
     });
 
-    test('2. A ManySide.findByIdAndDelete pontosan az URL-ből kinyert ID-val hívódik meg', async () => {
+    test('ManySide.findByIdAndDelete is called with exactly the ID extracted from the URL', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue({
             _id: 42,
             nev: 'iPhone 16'
@@ -61,7 +61,7 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + Eve
         expect(ManySide.findByIdAndDelete).toHaveBeenCalledWith('42');
     });
 
-    test('3. Nem létező ID törlésekor (null eredmény) 500-as státuszkódot és hibaüzenetet ad vissza', async () => {
+    test('Returns 500 status code and error message when deleting a non-existent ID (null result)', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue(null);
 
         req.url = '/manyside/999';
@@ -72,7 +72,7 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + Eve
         expect(res._getJSONData()).toHaveProperty('message');
     });
 
-    test('4. Adatbázis hiba esetén 500-as státuszkódot és a hibaüzenetet adja vissza JSON formátumban', async () => {
+    test('Returns 500 status code and error message in JSON format upon database error', async () => {
         ManySide.findByIdAndDelete.mockRejectedValue(new Error('Adatbázis hiba történt a törlés során'));
 
         await runRoute(req, res);
@@ -83,7 +83,7 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + Eve
         });
     });
 
-    test('5. Érvénytelen ID formátum (CastError) esetén 500-as státuszkódot és a hiba okát adja vissza', async () => {
+    test('Returns 500 status code and the cause of the error upon invalid ID format (CastError)', async () => {
         const castError = new Error('Cast to Number failed for value "invalid-id" at path "_id"');
         castError.name = 'CastError';
         ManySide.findByIdAndDelete.mockRejectedValue(castError);
@@ -96,7 +96,7 @@ describe('DELETE /api/manyside/:id végpont unit tesztjei (node-mocks-http + Eve
         expect(res._getJSONData().message).toContain('Cast to Number failed');
     });
 
-    test('6. Sikeres törlés esetén megfelelően lezárja a HTTP választ (_isEndCalled: true)', async () => {
+    test('Properly closes the HTTP response upon successful deletion (_isEndCalled: true)', async () => {
         ManySide.findByIdAndDelete.mockResolvedValue({
             _id: 10,
             nev: 'Xiaomi 15'
