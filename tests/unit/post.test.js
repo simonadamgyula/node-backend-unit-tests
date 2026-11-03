@@ -81,4 +81,20 @@ describe('POST /new', () => {
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ message: 'Szerver hiba' });
     });
+
+    it('logs unexpected errors before returning a 500 response', async () => {
+        const error = new Error('Database unavailable');
+        const req = { body: {} };
+        const res = createResponse();
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        ManySide.create.mockRejectedValue(error);
+
+        await createHandler(req, res);
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(error);
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({ message: 'Szerver hiba' });
+
+        consoleErrorSpy.mockRestore();
+    });
 });
