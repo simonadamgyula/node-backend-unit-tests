@@ -1,6 +1,6 @@
 const httpMocks = require('node-mocks-http');
 const { EventEmitter } = require('events');
-const routes = require('../../routes');
+const router = require('../../routes');
 const { ManySide } = require('../../models');
 
 jest.mock('../../models', () => ({
@@ -10,13 +10,9 @@ jest.mock('../../models', () => ({
     }
 }));
 
-const runRoute = (req, res) => new Promise((resolve, reject) => {
-    res.on('end', resolve);
-    routes(req, res, (err) => {
-        if (err) reject(err);
-        else resolve();
-    });
-});
+const patchManySideHandler = router.stack
+    .find((layer) => layer.route?.path === '/manyside/:id' && layer.route.methods.patch)
+    .route.stack[0].handle;
 
 describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEmitter)', () => {
     let req;
@@ -26,7 +22,8 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
         jest.clearAllMocks();
         req = httpMocks.createRequest({
             method: 'PATCH',
-            url: '/manyside/1'
+            url: '/manyside/1',
+            params: { id: '1' }
         });
         res = httpMocks.createResponse({
             eventEmitter: EventEmitter
@@ -45,7 +42,7 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
 
         req.body = { nev: 'updated' };
 
-        await runRoute(req, res);
+        await patchManySideHandler(req, res);
 
         expect(res.statusCode).toBe(200);
         expect(res._getData()).toEqual(mockUpdatedItem);
@@ -60,9 +57,10 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
         });
 
         req.url = '/manyside/5';
+        req.params.id = '5';
         req.body = updatePayload;
 
-        await runRoute(req, res);
+        await patchManySideHandler(req, res);
 
         expect(ManySide.findByIdAndUpdate).toHaveBeenCalledTimes(1);
         expect(ManySide.findByIdAndUpdate).toHaveBeenCalledWith(
@@ -76,9 +74,10 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
         ManySide.findByIdAndUpdate.mockResolvedValue(null);
 
         req.url = '/manyside/999';
+        req.params.id = '999';
         req.body = { nev: 'NemLetezo' };
 
-        await runRoute(req, res);
+        await patchManySideHandler(req, res);
 
         expect(res.statusCode).toBe(404);
         expect(res._getJSONData()).toEqual({
@@ -91,7 +90,7 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
 
         req.body = { nev: 'Teszt' };
 
-        await runRoute(req, res);
+        await patchManySideHandler(req, res);
 
         expect(res.statusCode).toBe(500);
         expect(res._getJSONData()).toEqual({
@@ -106,7 +105,7 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
 
         req.body = { nev: 'A'.repeat(55) };
 
-        await runRoute(req, res);
+        await patchManySideHandler(req, res);
 
         expect(res.statusCode).toBe(500);
         expect(res._getJSONData()).toEqual({
@@ -120,9 +119,10 @@ describe('PATCH /api/manyside/:id endpoint unit tests (node-mocks-http + EventEm
         ManySide.findByIdAndUpdate.mockRejectedValue(castError);
 
         req.url = '/manyside/abc';
+        req.params.id = 'abc';
         req.body = { ar: 150000 };
 
-        await runRoute(req, res);
+        await patchManySideHandler(req, res);
 
         expect(res.statusCode).toBe(500);
         expect(res._isEndCalled()).toBe(true);

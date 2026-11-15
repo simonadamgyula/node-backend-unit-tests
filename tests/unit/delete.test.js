@@ -1,6 +1,6 @@
 const httpMocks = require('node-mocks-http');
 const { EventEmitter } = require('events');
-const routes = require('../../routes');
+const router = require('../../routes');
 const { ManySide } = require('../../models');
 
 jest.mock('../../models', () => ({
@@ -10,13 +10,9 @@ jest.mock('../../models', () => ({
     }
 }));
 
-const runRoute = (req, res) => new Promise((resolve, reject) => {
-    res.on('end', resolve);
-    routes(req, res, (err) => {
-        if (err) reject(err);
-        else resolve();
-    });
-});
+const deleteManySideHandler = router.stack
+    .find((layer) => layer.route?.path === '/manyside/:id' && layer.route.methods.delete)
+    .route.stack[0].handle;
 
 describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventEmitter)', () => {
     let req;
@@ -26,7 +22,8 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
         jest.clearAllMocks();
         req = httpMocks.createRequest({
             method: 'DELETE',
-            url: '/manyside/21'
+            url: '/manyside/21',
+            params: { id: '21' }
         });
         res = httpMocks.createResponse({
             eventEmitter: EventEmitter
@@ -41,7 +38,7 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
             foreignId: 1
         });
 
-        await runRoute(req, res);
+        await deleteManySideHandler(req, res);
 
         expect(res.statusCode).toBe(200);
         expect(res._getData()).toBe('A Samsung S25 nevű elem törölve lett.');
@@ -54,8 +51,9 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
         });
 
         req.url = '/manyside/42';
+        req.params.id = '42';
 
-        await runRoute(req, res);
+        await deleteManySideHandler(req, res);
 
         expect(ManySide.findByIdAndDelete).toHaveBeenCalledTimes(1);
         expect(ManySide.findByIdAndDelete).toHaveBeenCalledWith('42');
@@ -65,8 +63,9 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
         ManySide.findByIdAndDelete.mockResolvedValue(null);
 
         req.url = '/manyside/999';
+        req.params.id = '999';
 
-        await runRoute(req, res);
+        await deleteManySideHandler(req, res);
 
         expect(res.statusCode).toBe(500);
         expect(res._getJSONData()).toHaveProperty('message');
@@ -75,7 +74,7 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
     test('Returns 500 status code and error message in JSON format upon database error', async () => {
         ManySide.findByIdAndDelete.mockRejectedValue(new Error('Adatbázis hiba történt a törlés során'));
 
-        await runRoute(req, res);
+        await deleteManySideHandler(req, res);
 
         expect(res.statusCode).toBe(500);
         expect(res._getJSONData()).toEqual({
@@ -89,8 +88,9 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
         ManySide.findByIdAndDelete.mockRejectedValue(castError);
 
         req.url = '/manyside/invalid-id';
+        req.params.id = 'invalid-id';
 
-        await runRoute(req, res);
+        await deleteManySideHandler(req, res);
 
         expect(res.statusCode).toBe(500);
         expect(res._getJSONData().message).toContain('Cast to Number failed');
@@ -103,8 +103,9 @@ describe('DELETE /api/manyside/:id endpoint unit tests (node-mocks-http + EventE
         });
 
         req.url = '/manyside/10';
+        req.params.id = '10';
 
-        await runRoute(req, res);
+        await deleteManySideHandler(req, res);
 
         expect(res.statusCode).toBe(200);
         expect(res._isEndCalled()).toBe(true);
