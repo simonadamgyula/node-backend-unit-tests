@@ -1,3 +1,6 @@
+const httpMocks = require('node-mocks-http');
+const { EventEmitter } = require('events');
+
 jest.mock('../../models', () => ({
     OneSide: {},
     ManySide: {
@@ -18,13 +21,9 @@ const getManySideByIdHandler = router.stack
     .route.stack[0].handle;
 
 function createResponse() {
-    const res = {
-        status: jest.fn(),
-        json: jest.fn()
-    };
-    res.status.mockReturnValue(res);
-    res.json.mockReturnValue(res);
-    return res;
+    return httpMocks.createResponse({
+        eventEmitter: EventEmitter
+    });
 }
 
 describe('GET /manyside', () => {
@@ -44,36 +43,42 @@ describe('GET /manyside', () => {
         const populate = jest.fn().mockResolvedValue(phones);
         ManySide.find.mockReturnValue({ populate });
         const res = createResponse();
+        const req = httpMocks.createRequest({ method: 'GET', url: '/manyside' });
 
-        await getManySideHandler({}, res);
+        await getManySideHandler(req, res);
 
         expect(ManySide.find).toHaveBeenCalledWith();
         expect(populate).toHaveBeenCalledWith('foreignId', '-_id');
-        expect(res.json).toHaveBeenCalledWith(phones);
-        expect(res.status).not.toHaveBeenCalled();
+        expect(res._getJSONData()).toEqual(phones);
+        expect(res.statusCode).toBe(200);
     });
 
     it('returns an empty array when no phones exist', async () => {
         const populate = jest.fn().mockResolvedValue([]);
         ManySide.find.mockReturnValue({ populate });
         const res = createResponse();
+        const req = httpMocks.createRequest({ method: 'GET', url: '/manyside' });
 
-        await getManySideHandler({}, res);
+        await getManySideHandler(req, res);
 
-        expect(res.json).toHaveBeenCalledWith([]);
-        expect(res.status).not.toHaveBeenCalled();
+        expect(res._getJSONData()).toEqual([]);
+        expect(res.statusCode).toBe(200);
     });
 
     it('does not pass client query parameters into the database query', async () => {
         const populate = jest.fn().mockResolvedValue(phones);
         ManySide.find.mockReturnValue({ populate });
-        const req = { query: { $where: 'malicious query', foreignId: 'untrusted' } };
+        const req = httpMocks.createRequest({
+            method: 'GET',
+            url: '/manyside',
+            query: { $where: 'malicious query', foreignId: 'untrusted' }
+        });
         const res = createResponse();
 
         await getManySideHandler(req, res);
 
         expect(ManySide.find).toHaveBeenCalledWith();
-        expect(res.json).toHaveBeenCalledWith(phones);
+        expect(res._getJSONData()).toEqual(phones);
     });
 
     it('returns 500 when finding phones fails', async () => {
@@ -81,22 +86,24 @@ describe('GET /manyside', () => {
             throw new Error('Database unavailable');
         });
         const res = createResponse();
+        const req = httpMocks.createRequest({ method: 'GET', url: '/manyside' });
 
-        await getManySideHandler({}, res);
+        await getManySideHandler(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({ message: 'Database unavailable' });
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({ message: 'Database unavailable' });
     });
 
     it('returns 500 when populating phones fails', async () => {
         const populate = jest.fn().mockRejectedValue(new Error('Population failed'));
         ManySide.find.mockReturnValue({ populate });
         const res = createResponse();
+        const req = httpMocks.createRequest({ method: 'GET', url: '/manyside' });
 
-        await getManySideHandler({}, res);
+        await getManySideHandler(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({ message: 'Population failed' });
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({ message: 'Population failed' });
     });
 });
 
@@ -117,28 +124,36 @@ describe('GET /manyside/:id', () => {
         const phone = phones[0];
         const populate = jest.fn().mockResolvedValue(phone);
         ManySide.findById.mockReturnValue({ populate });
-        const req = { params: { id: String(phone._id) } };
+        const req = httpMocks.createRequest({
+            method: 'GET',
+            url: `/manyside/${phone._id}`,
+            params: { id: String(phone._id) }
+        });
         const res = createResponse();
 
         await getManySideByIdHandler(req, res);
 
         expect(ManySide.findById).toHaveBeenCalledWith(String(phone._id));
         expect(populate).toHaveBeenCalledWith('foreignId', '-_id');
-        expect(res.json).toHaveBeenCalledWith(phone);
-        expect(res.status).not.toHaveBeenCalled();
+        expect(res._getJSONData()).toEqual(phone);
+        expect(res.statusCode).toBe(200);
     });
 
     it('returns 404 when the phone does not exist', async () => {
         const populate = jest.fn().mockResolvedValue(null);
         ManySide.findById.mockReturnValue({ populate });
-        const req = { params: { id: 'missing-id' } };
+        const req = httpMocks.createRequest({
+            method: 'GET',
+            url: '/manyside/missing-id',
+            params: { id: 'missing-id' }
+        });
         const res = createResponse();
 
         await getManySideByIdHandler(req, res);
 
         expect(ManySide.findById).toHaveBeenCalledWith('missing-id');
-        expect(res.status).toHaveBeenCalledWith(404);
-        expect(res.json).toHaveBeenCalledWith({
+        expect(res.statusCode).toBe(404);
+        expect(res._getJSONData()).toEqual({
             message: 'Nincs ilyen azonosítóval rendelkező elem.'
         });
     });
@@ -146,13 +161,17 @@ describe('GET /manyside/:id', () => {
     it('returns 404 when the lookup has no result', async () => {
         const populate = jest.fn().mockResolvedValue(undefined);
         ManySide.findById.mockReturnValue({ populate });
-        const req = { params: { id: 'missing-id' } };
+        const req = httpMocks.createRequest({
+            method: 'GET',
+            url: '/manyside/missing-id',
+            params: { id: 'missing-id' }
+        });
         const res = createResponse();
 
         await getManySideByIdHandler(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(404);
-        expect(res.json).toHaveBeenCalledWith({
+        expect(res.statusCode).toBe(404);
+        expect(res._getJSONData()).toEqual({
             message: 'Nincs ilyen azonosítóval rendelkező elem.'
         });
     });
@@ -161,24 +180,32 @@ describe('GET /manyside/:id', () => {
         ManySide.findById.mockImplementation(() => {
             throw new Error('Database unavailable');
         });
-        const req = { params: { id: '7' } };
+        const req = httpMocks.createRequest({
+            method: 'GET',
+            url: '/manyside/7',
+            params: { id: '7' }
+        });
         const res = createResponse();
 
         await getManySideByIdHandler(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({ message: 'Database unavailable' });
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({ message: 'Database unavailable' });
     });
 
     it('returns 500 when populating a phone fails', async () => {
         const populate = jest.fn().mockRejectedValue(new Error('Population failed'));
         ManySide.findById.mockReturnValue({ populate });
-        const req = { params: { id: '7' } };
+        const req = httpMocks.createRequest({
+            method: 'GET',
+            url: '/manyside/7',
+            params: { id: '7' }
+        });
         const res = createResponse();
 
         await getManySideByIdHandler(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({ message: 'Population failed' });
+        expect(res.statusCode).toBe(500);
+        expect(res._getJSONData()).toEqual({ message: 'Population failed' });
     });
 });
